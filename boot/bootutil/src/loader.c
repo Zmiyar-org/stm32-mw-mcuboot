@@ -701,7 +701,7 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
         rc = boot_version_cmp(
                 &boot_img_hdr(state, BOOT_SECONDARY_SLOT)->ih_ver,
                 &boot_img_hdr(state, BOOT_PRIMARY_SLOT)->ih_ver);
-        if (rc < 0 && boot_check_header_erased(state, BOOT_PRIMARY_SLOT)) {
+        if (rc <= 0 && boot_check_header_erased(state, BOOT_PRIMARY_SLOT)) {
             BOOT_LOG_ERR("insufficient version in secondary slot");
             flash_area_erase(fap, 0, fap->fa_size);
             /* Image in the secondary slot does not satisfy version requirement.
