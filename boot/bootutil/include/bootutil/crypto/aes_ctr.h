@@ -294,22 +294,15 @@ static int aes_setkey( bootutil_aes_ctr_context *ctx,
     ctx->hcryp_aes.Init.DataWidthUnit = CRYP_DATAWIDTHUNIT_BYTE;
 
 
-    /* Set the common CRYP parameters */
-#if defined (SAES)
-    ctx->hcryp_aes.Instance = SAES;
-#else
+    /* Use the regular AES peripheral (not SAES) for CTR mode.
+     * On STM32U585 SAES doesn't support CTR */
     ctx->hcryp_aes.Instance = AES;
-#endif
     ctx->hcryp_aes.Init.KeyMode = CRYP_KEYMODE_NORMAL;
     ctx->hcryp_aes.Init.KeySelect = CRYP_KEYSEL_NORMAL;
-    ctx->hcryp_aes.Init.Algorithm     = CRYP_AES_ECB;
+    ctx->hcryp_aes.Init.Algorithm     = CRYP_AES_CTR;
 
-    /* Enable clock */
-#if defined (SAES)
-    __HAL_RCC_SAES_CLK_ENABLE();
-#else
+    /* Enable AES clock */
     __HAL_RCC_AES_CLK_ENABLE();
-#endif
 
     if (HAL_CRYP_Init(&ctx->hcryp_aes) != HAL_OK)
     {
@@ -339,12 +332,8 @@ static inline void bootutil_aes_ctr_drop(bootutil_aes_ctr_context *ctx)
             Error_Handler();
         }
     }
-/* Disable clock */
-#if defined (SAES)
-    __HAL_RCC_SAES_CLK_DISABLE();
-#else
+/* Disable AES clock */
     __HAL_RCC_AES_CLK_DISABLE();
-#endif
 }
 
 static inline int bootutil_aes_ctr_set_key(bootutil_aes_ctr_context *ctx, const uint8_t *k)
@@ -376,49 +365,59 @@ static int aes_crypt_ctr(bootutil_aes_ctr_context *ctx,
     ctx->hcryp_aes.Instance->CR = ctx->ctx_save_cr;
 
     ctx->hcryp_aes.Init.Algorithm = CRYP_AES_CTR;
+    ctx->hcryp_aes.Init.KeyIVConfigSkip = CRYP_KEYIVCONFIG_ALWAYS;
 
-    /* Set IV with invert endianness */
+    /* Load IV from nonce_counter (big-endian byte stream → 32-bit words) */
     GET_UINT32_BE(iv_32B[0], nonce_counter, 0);
     GET_UINT32_BE(iv_32B[1], nonce_counter, 4);
     GET_UINT32_BE(iv_32B[2], nonce_counter, 8);
     GET_UINT32_BE(iv_32B[3], nonce_counter, 12);
-
     ctx->hcryp_aes.Init.pInitVect = iv_32B;
-    ctx->hcryp_aes.Init.KeyIVConfigSkip = CRYP_IVCONFIG_ONCE;
 
-    /* Set AES configuration */
     if (HAL_CRYP_SetConfig(&ctx->hcryp_aes, &ctx->hcryp_aes.Init) != HAL_OK)
     {
         return ERR_PLATFORM_HW_ACCEL_FAILED;
     }
 
-    if (bootutil_aes_randomize_key_instance(&ctx->hcryp_aes) != 0)
+    if (in_length > 0U)
     {
-        return ERR_PLATFORM_HW_ACCEL_FAILED;
-    }
-
-    if (HAL_CRYP_Encrypt(&ctx->hcryp_aes, (uint32_t *)input, in_length, (uint32_t *)output, ST_AES_TIMEOUT) != HAL_OK)
-    {
-        return ERR_PLATFORM_HW_ACCEL_FAILED;
-    }
-
-    if (last_bytes)
-    {
+        /* CRYP_KEYIVCONFIG_ALWAYS: loads key (with KEYVALID wait) + IV before
+         * processing; hardware auto-increments CTR across all blocks. */
+        if (HAL_CRYP_Encrypt(&ctx->hcryp_aes, (uint32_t *)input, in_length,
+                             (uint32_t *)output, ST_AES_TIMEOUT) != HAL_OK)
+        {
+            return ERR_PLATFORM_HW_ACCEL_FAILED;
+        }
         if (bootutil_aes_randomize_key_instance(&ctx->hcryp_aes) != 0)
         {
             return ERR_PLATFORM_HW_ACCEL_FAILED;
         }
+    }
+
+    if (last_bytes > 0U)
+    {
+        /* Read updated counter from hardware into iv_32B so the next
+         * CRYP_KEYIVCONFIG_ALWAYS call reloads the correct next-block IV. */
+        iv_32B[0] = ctx->hcryp_aes.Instance->IVR3;
+        iv_32B[1] = ctx->hcryp_aes.Instance->IVR2;
+        iv_32B[2] = ctx->hcryp_aes.Instance->IVR1;
+        iv_32B[3] = ctx->hcryp_aes.Instance->IVR0;
 
         memset(work_buf, 0U, sizeof(work_buf));
         memcpy(work_buf, input + in_length, last_bytes);
-        if (HAL_CRYP_Encrypt(&ctx->hcryp_aes, (uint32_t *)work_buf, 16U, (uint32_t *)(output + in_length),
+        if (HAL_CRYP_Encrypt(&ctx->hcryp_aes, (uint32_t *)work_buf, 16U,
+                             (uint32_t *)(output + in_length),
                              ST_AES_TIMEOUT) != HAL_OK)
         {
-          return ERR_PLATFORM_HW_ACCEL_FAILED;
+            return ERR_PLATFORM_HW_ACCEL_FAILED;
+        }
+        if (bootutil_aes_randomize_key_instance(&ctx->hcryp_aes) != 0)
+        {
+            return ERR_PLATFORM_HW_ACCEL_FAILED;
         }
     }
 
-    /* Get IV vector for the next call */
+    /* Read back final counter for streaming callers */
     PUT_UINT32_BE(ctx->hcryp_aes.Instance->IVR3, nonce_counter, 0);
     PUT_UINT32_BE(ctx->hcryp_aes.Instance->IVR2, nonce_counter, 4);
     PUT_UINT32_BE(ctx->hcryp_aes.Instance->IVR1, nonce_counter, 8);

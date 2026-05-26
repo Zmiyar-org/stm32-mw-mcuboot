@@ -518,7 +518,6 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
     uint8_t private_key[PRIV_KEY_LEN];
     uint8_t counter[BOOTUTIL_CRYPTO_AES_CTR_BLOCK_SIZE];
     uint16_t len;
-    size_t olen;
 #endif
     int rc = -1;
     size_t size_check;
@@ -547,21 +546,6 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
     rc = bootutil_rsa_oaep_decrypt(&rsa, NULL, NULL, BOOTUTIL_RSA_PRIVATE,
             NULL, 0, &olen, buf, enckey, BOOT_ENC_KEY_SIZE);
     bootutil_rsa_drop(&rsa);
-    while(olen!=0)
-    {  BOOT_LOG_INF("%x, %x, %x, %x, %x, %x , %x ,%x,",
-	   enckey[BOOT_ENC_KEY_SIZE-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+1-(olen)],
-	   enckey[BOOT_ENC_KEY_SIZE+2-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+3-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+4-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+5-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+6-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+7-olen]);
-	if (olen > 8)
-	  olen = olen -8;
-	else
-	  olen = 0;
-   }
 
 #endif /* defined(MCUBOOT_ENCRYPT_RSA) */
 
@@ -698,23 +682,6 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
         bootutil_aes_ctr_drop(&aes_ctr);
         return -1;
     }
-    olen=16;
-    while(olen!=0)
-    {  BOOT_LOG_INF("%x, %x, %x, %x, %x, %x , %x ,%x,",
-	   enckey[BOOT_ENC_KEY_SIZE-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+1-(olen)],
-	   enckey[BOOT_ENC_KEY_SIZE+2-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+3-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+4-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+5-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+6-olen],
-	   enckey[BOOT_ENC_KEY_SIZE+7-olen]);
-	if (olen > 8)
-	  olen = olen -8;
-	else
-	  olen = 0;
-   }
-
     bootutil_aes_ctr_drop(&aes_ctr);
 
     rc = 0;
