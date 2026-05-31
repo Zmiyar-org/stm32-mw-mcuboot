@@ -2109,6 +2109,11 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
      * have been re-validated.
      */
     BOOT_LOG_INF("Starting validation of primary slot(s)");
+    if (boot_img_hdr(state, BOOT_PRIMARY_SLOT)->ih_magic == IMAGE_MAGIC) {
+        BOOT_LOG_IMAGE_INFO(BOOT_PRIMARY_SLOT, boot_img_hdr(state, BOOT_PRIMARY_SLOT));
+    } else {
+        BOOT_LOG_WRN("Primary slot: no valid image");
+    }
     IMAGES_ITER(BOOT_CURR_IMG(state)) {
         if (BOOT_SWAP_TYPE(state) != BOOT_SWAP_TYPE_NONE) {
             /* Attempt to read an image header from each slot. Ensure that image
